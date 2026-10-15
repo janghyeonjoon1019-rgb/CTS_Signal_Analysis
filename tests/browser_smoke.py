@@ -4,10 +4,14 @@ Set CTS_BROWSER_SYSTEM_PROXY=1 only for proxy-managed cloud test runners.
 from playwright.sync_api import sync_playwright
 from pathlib import Path
 import json,struct,urllib.request,urllib.error,hashlib,time,sys,os
+import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from test_analysis import synthetic, OPTIONS
 r,t=synthetic()
+# A reproducible 0.1%-of-peak noise floor exercises realistic browser fitting.
+# Perfect zero-residual data make relative DE convergence needlessly expensive.
+t[0] = t[0] + np.random.default_rng(42).normal(0, .5, 1024)
 payload={'R':[row.tolist() for row in r],'T':[row.tolist() for row in t],'options':OPTIONS}
 output=Path('test-results');output.mkdir(exist_ok=True)
 def spe(row, second=None, bad_y=None):
