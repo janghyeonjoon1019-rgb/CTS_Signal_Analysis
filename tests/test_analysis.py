@@ -137,3 +137,22 @@ class AnalysisTest(unittest.TestCase):
             fine = a.custom_thomson_model(*args)
         self.assertLess(np.max(np.abs(coarse-fine)),.002)
         self.assertAlmostEqual(coarse[:475].max()/coarse[475:].max(),1.,delta=.01)
+
+    def test_sampling_option_controls_grid_and_resets_between_runs(self):
+        for factor in [3, 16, 32, 64]:
+            a.configure(dict(OPTIONS, model_oversample=factor))
+            def source(wavelengths, *args, **kwargs):
+                self.assertEqual(len(wavelengths),1023*factor+1)
+                x = np.arange(len(wavelengths))/factor
+                return 1.,np.exp(-.5*((x-512)/2)**2)
+            with patch.object(a.thomson,'spectral_density',side_effect=source):
+                curve=a.custom_thomson_model(a.wavelengths,1e25,30,15,480,3)
+            self.assertEqual(len(curve),1024)
+            self.assertAlmostEqual(np.sum(np.arange(1024)*curve)/curve.sum(),512.,places=8)
+            out=a.analyze([[100.]*1024],[[100.]*1024],dict(OPTIONS,model_oversample=factor))
+            self.assertEqual(out['options']['model_oversample'],factor)
+        a.configure(OPTIONS)
+        self.assertEqual(a.MODEL_OVERSAMPLE,64)
+        for bad in [0,-1,1.5,float('nan'),float('inf')]:
+            with self.assertRaisesRegex(ValueError,'oversampling'):
+                a.configure(dict(OPTIONS,model_oversample=bad))

@@ -89,12 +89,13 @@ function prepare(){
   if(!state.reference||!state.thomson)throw new Error('First apply four-file Rayleigh averaging and select Thomson frames.');
   const from=Number($('y-from').value),to=Number($('y-to').value),step=Number($('y-step').value);
   if([...document.querySelectorAll('.settings-grid input')].some(el=>el.value.trim()===''))throw new Error('Complete all analysis parameters.');
-  const options=Object.fromEntries(['n1','n2','ELR','ELT','shot_R','shot_T','fwhm'].map(k=>[k,Number($(k).value)]));
+  const options=Object.fromEntries(['n1','n2','ELR','ELT','shot_R','shot_T','fwhm','model_oversample'].map(k=>[k,Number($(k).value)]));
   if(!Object.values(options).every(Number.isFinite)||!Number.isInteger(options.n1)||!Number.isInteger(options.n2)||options.n1<0||options.n2>1023||options.n1>=options.n2)throw new Error('Check the notch pixel range (0 <= from < to < 1024).');
   if(options.ELR<=0||options.ELT<=0||![options.shot_R,options.shot_T].every(v=>Number.isInteger(v)&&v>0))throw new Error('Laser energies must be positive and shot counts must be positive integers.');
   if(options.fwhm<=0)throw new Error('Instrument FWHM must be a positive value in pixels.');
+  if(!Number.isInteger(options.model_oversample)||options.model_oversample<1)throw new Error('Model oversampling must be a positive integer (e.g. 16, 32 or 64).');
   const R=binRows(state.reference.data,1024,state.reference.height,from,to,step),T=binRows(state.thomson.data,1024,state.thomson.height,from,to,step);
-  const metadata={from,to,step,rayleigh_formula:'(max(file1 - file2, 0) + max(file3 - file4, 0)) / 2',files:Object.fromEntries(['r','b','r2','b2','t'].map(k=>[k,{name:$(k+'-file').files[0].name,frames:selected(k).map(i=>i+1)}])),pixel_nm:.002266,probe_nm:532,angle_deg:135,fwhm_px:options.fwhm};
+  const metadata={from,to,step,rayleigh_formula:'(max(file1 - file2, 0) + max(file3 - file4, 0)) / 2',files:Object.fromEntries(['r','b','r2','b2','t'].map(k=>[k,{name:$(k+'-file').files[0].name,frames:selected(k).map(i=>i+1)}])),pixel_nm:.002266,probe_nm:532,angle_deg:135,fwhm_px:options.fwhm,model_oversample:options.model_oversample};
   return {R,T,options,metadata};
 }
 function download(name,text,type='text/plain'){
@@ -142,7 +143,7 @@ function showResults(){
   const {rows,metadata:m}=state.result;$('results').hidden=false;$('result-body').replaceChildren();$('spectra-list').replaceChildren();
   $('run-errors').replaceChildren();$('run-errors').hidden=true;
   const failed=rows.filter(row=>row.status==='failed').length;
-  $('result-meta').textContent=`${rows.length} Y bins · [${m.from}, ${m.to}), step ${m.step} · ${rows.length-failed} succeeded, ${failed} skipped · FWHM ${state.result.options.fwhm} px. Failed bins remain empty; curves do not bridge them. Velocity uses the original symmetry center. Parameters are included in JSON.`;
+  $('result-meta').textContent=`${rows.length} Y bins · [${m.from}, ${m.to}), step ${m.step} · ${rows.length-failed} succeeded, ${failed} skipped · FWHM ${state.result.options.fwhm} px · Model oversampling ${state.result.options.model_oversample}×. Failed bins remain empty; curves do not bridge them. Velocity uses the original symmetry center. Parameters are included in JSON.`;
   rows.forEach((row,i)=>{
     const y=m.from+i*m.step,label=`${y}–${Math.min(y+m.step,m.to)}`;
     const failed = row.status === 'failed';
@@ -206,8 +207,8 @@ $('export-results').addEventListener('click',()=>{
   if(!state.result)return;const {rows,metadata:m}=state.result;
   const fields=['ne','Te','Ti','Z','velocity','center','fitted_center','width','rayleigh_integral','thomson_integral','converged','iterations','redchi','status'];
   const csvCell = value => '"'+String(value??'').replaceAll('"','""')+'"';
-  const header=['bin_number','y_from','y_to','fwhm_px',...fields,'error_stage','error_message','warning'];
-  const records=rows.map((row,i)=>[i+1,...binRange(i,m),m.fwhm_px,...fields.map(key=>row[key]),row.error?.stage,row.error?.message,(row.warnings||[]).join(' ')]);
+  const header=['bin_number','y_from','y_to','fwhm_px','model_oversample',...fields,'error_stage','error_message','warning'];
+  const records=rows.map((row,i)=>[i+1,...binRange(i,m),m.fwhm_px,state.result.options.model_oversample,...fields.map(key=>row[key]),row.error?.stage,row.error?.message,(row.warnings||[]).join(' ')]);
   const csv=[header,...records].map(record=>record.map(csvCell).join(',')).join('\n');
   download('CTS_results.csv',csv,'text/csv');download('CTS_results.json',JSON.stringify(state.result,null,2),'application/json');
 });

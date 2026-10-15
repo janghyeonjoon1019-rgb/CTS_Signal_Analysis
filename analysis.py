@@ -199,8 +199,9 @@ def custom_thomson_model(wavelengths, ne, Te, Ti, center, width):
     width = int(round(width))
     if width > 1:
         # Centered box of the same physical width, with trapezoidal endpoints.
-        kernel = np.ones(width * factor + 1)
-        kernel[[0, -1]] = .5
+        half_width = width * factor / 2
+        offsets = np.arange(-math.ceil(half_width), math.ceil(half_width) + 1)
+        kernel = np.clip(half_width + .5 - np.abs(offsets), 0, 1)
         kernel /= width * factor
         Skw = fftconvolve(Skw, kernel, mode='same')
 
@@ -214,6 +215,11 @@ def custom_thomson_model(wavelengths, ne, Te, Ti, center, width):
 
 def configure(options):
     global n1, n2, N1, N2, centerpixel, wavelengths, Mask, ELR, ELT, shot_R, shot_T, fwhm, sigma
+    global MODEL_OVERSAMPLE
+    factor = float(options.get('model_oversample', 64))
+    if not np.isfinite(factor) or factor < 1 or not factor.is_integer():
+        raise ValueError('Model oversampling must be a positive integer (e.g. 16, 32 or 64).')
+    MODEL_OVERSAMPLE = int(factor)
     n1, n2 = int(options['n1']), int(options['n2'])
     if not 0 <= n1 < n2 < 1024:
         raise ValueError('Notch must satisfy 0 <= from < to < 1024.')

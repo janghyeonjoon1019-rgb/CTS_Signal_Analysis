@@ -75,7 +75,7 @@ with sync_playwright() as p:
  page.locator('#run').click();assert 'First' in page.locator('#status').inner_text()
  page.locator('#b2-all').check()
  page.locator('#subtract').click()
- for key,value in {'y-from':4,'y-to':60,'y-step':1,'n1':475,'n2':485,'ELR':1,'ELT':1,'shot_R':6,'shot_T':1,'fwhm':8}.items():
+ for key,value in {'y-from':4,'y-to':60,'y-step':1,'n1':475,'n2':485,'ELR':1,'ELT':1,'shot_R':6,'shot_T':1,'fwhm':8,'model_oversample':16}.items():
   page.locator('#'+key).fill(str(value))
  for key in ['r','t']:
   canvas=page.locator('#'+key+'-preview')
@@ -101,6 +101,9 @@ with sync_playwright() as p:
   assert canvas_pixels!=canvas.evaluate('(el)=>el.toDataURL()')
   assert initial==canvas.evaluate('(el)=>el.toDataURL()')
  page.locator('#y-from').fill('0');page.locator('#y-to').fill('3');page.locator('#y-step').fill('1')
+ for bad in ['0','1.5']:
+  page.locator('#model_oversample').fill(bad);page.locator('#run').click();assert 'oversampling' in page.locator('#status').inner_text()
+ page.locator('#model_oversample').fill('16')
  page.locator('#fwhm').fill('0');page.locator('#run').click();assert 'FWHM' in page.locator('#status').inner_text();page.locator('#fwhm').fill('8')
  page.locator('#ELT').fill('0');page.locator('#run').click();assert 'positive' in page.locator('#status').inner_text();page.locator('#ELT').fill('1')
  with page.expect_download() as dl:page.locator('#export-signals').click()
@@ -138,12 +141,15 @@ with sync_playwright() as p:
  exported={d.suggested_filename:Path(d.path()).read_text() for d in downloads}
  assert set(exported)=={'CTS_results.csv','CTS_results.json'}
  data=json.loads(exported['CTS_results.json'])
+ assert data['options']['model_oversample']==16 and data['metadata']['model_oversample']==16
+ assert 'Model oversampling 16×' in page.locator('#result-meta').inner_text()
  assert data['metadata']['fwhm_px']==8 and data['options']['fwhm']==8
  assert 'max(file1 - file2, 0)' in data['metadata']['rayleigh_formula']
  assert data['rows'][1]['ne'] is None and data['rows'][1]['status']=='failed'
  assert data['rows'][2]['index']==2
  import csv,io
  records=list(csv.DictReader(io.StringIO(exported['CTS_results.csv'])))
+ assert all(row['model_oversample']=='16' for row in records)
  assert records[1]['bin_number']=='2' and records[1]['y_from']=='1' and records[1]['ne']==''
  assert records[1]['error_stage']=='thomson_integral' and records[2]['status']=='ok'
  assert not __import__('re').search('[가-힣]',page.locator('body').inner_text())
@@ -151,6 +157,8 @@ with sync_playwright() as p:
  # The reused worker must also handle an entirely failed run with new FWHM.
  page.locator('#t-file').set_input_files({'name':'flat.spe','mimeType':'application/octet-stream','buffer':spe([100.]*1024)})
  page.wait_for_function("document.querySelector('#t-name').textContent.includes('flat.spe')")
+ page.locator('#model_oversample').fill('32')
+ assert page.locator('#results').evaluate('(el)=>el.hidden')
  page.locator('#fwhm').fill('4.8')
  page.locator('#run').click()
  page.wait_for_function("!document.querySelector('#results').hidden",timeout=30000)
@@ -159,6 +167,7 @@ with sync_playwright() as p:
  assert page.locator('#spectra-list .failed-bin').count()==3
  assert '0 succeeded, 3 failed' in page.locator('#status').inner_text()
  assert 'FWHM 4.8 px' in page.locator('#result-meta').inner_text()
+ assert 'Model oversampling 32×' in page.locator('#result-meta').inner_text()
  page.screenshot(path=str(output/'all-failed.png'),full_page=True)
  page.locator('#n1').fill('474');assert page.locator('#results').evaluate('(el)=>el.hidden')
  page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(output/'mobile.png'),full_page=True)
