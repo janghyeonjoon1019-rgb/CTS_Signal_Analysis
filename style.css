@@ -58,3 +58,5 @@ footer{flex-wrap:wrap}
   .image-top>span{overflow-wrap:anywhere;min-width:0}
 }
 .run-errors{padding:18px 24px 18px 42px;margin:0 0 24px;border:1px solid #e2aaa1;background:#fff4f1;border-radius:8px;color:#9d392b;font-size:18px;overflow-wrap:anywhere}.run-errors li+li{margin-top:8px}.failed-bin{background:#fff6f3}.chart-card.failed-bin{border-color:#e2aaa1}.bin-error{color:#9d392b;white-space:normal;min-width:180px;max-width:560px;overflow-wrap:anywhere}.bin-warning{color:#805b21}details{margin-top:14px}summary{cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px}
+
+.rayleigh-comparison{margin-top:16px;padding:16px;border:1px solid var(--line, #d9e2de);border-radius:10px;background:#edf6f3;overflow-wrap:anywhere}.rayleigh-comparison strong{display:block;color:#147d73}.rayleigh-comparison p{margin:10px 0 0}.rayleigh-comparison[hidden]{display:none}

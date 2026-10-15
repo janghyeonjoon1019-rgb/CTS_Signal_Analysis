@@ -56,3 +56,19 @@ export function averageRayleigh(first, second, third, fourth) {
   }
   return a.map((value, i) => (Math.max(value, 0) + Math.max(b[i], 0)) / 2);
 }
+
+// Symmetric percentage difference of the same clipped signals used in final R.
+export function rayleighPairComparison(first, second, third, fourth) {
+  const a = subtract(first, second), b = subtract(third, fourth);
+  if (first.width !== third.width || first.height !== third.height) {
+    throw new Error('All four Rayleigh SPE files must have matching image dimensions.');
+  }
+  let firstTotal = 0, secondTotal = 0;
+  for (let i = 0; i < a.length; i++) {
+    firstTotal += Math.max(a[i], 0);
+    secondTotal += Math.max(b[i], 0);
+  }
+  const mean = (firstTotal + secondTotal) / 2;
+  return {firstTotal, secondTotal,
+    differencePercent: mean > 0 ? Math.abs(firstTotal - secondTotal) / mean * 100 : null};
+}

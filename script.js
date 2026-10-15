@@ -1,4 +1,4 @@
-import {parseSpe, averageFrames, averageRayleigh, binRows} from './spe.js';
+import {parseSpe, averageFrames, averageRayleigh, rayleighPairComparison, binRows} from './spe.js';
 import {SignalPreview} from './preview.js';
 const $ = id => document.getElementById(id);
 const state = {r:null, b:null, r2:null, b2:null, t:null, reference:null, thomson:null, result:null, worker:null, busy:false};
@@ -10,7 +10,7 @@ const previews = Object.fromEntries(['r','t'].map(key => [key, new SignalPreview
 )]));
 const message = (text, error=false) => { $('status').textContent=text; $('status').classList.toggle('error',error); };
 function invalidate(){ state.result=null; $('results').hidden=true; $('run-errors').replaceChildren(); $('run-errors').hidden=true; }
-function clearImage(key){previews[key].setImage(null);$(key+'-empty').hidden=false;$(key+'-dim').textContent='1024 × Y';}
+function clearImage(key){if(key==='r')$('rayleigh-comparison').hidden=true;previews[key].setImage(null);$(key+'-empty').hidden=false;$(key+'-dim').textContent='1024 × Y';}
 function selected(key){return [...$(key+'-frames').querySelectorAll('input:checked')].map(el=>Number(el.value));}
 function averaged(key){const s=state[key];if(!s)throw new Error(`${key.toUpperCase()} SPE file is required.`);return {...s,data:averageFrames(s,selected(key))};}
 function syncSelectAll() {
@@ -57,8 +57,21 @@ function framesChanged(key){
 }
 for(const key of ['r','b','r2','b2','t'])$(key+'-file').addEventListener('change',e=>{if(e.target.files[0])loadFile(key,e.target.files[0]);});
 $('subtract').addEventListener('click',()=>{
-  try{const r=averaged('r'), b=averaged('b'), r2=averaged('r2'), b2=averaged('b2');state.reference={...r,data:averageRayleigh(r,b,r2,b2)};invalidate();renderImage('r',state.reference);message('Applied R = (max(1 − 2, 0) + max(3 − 4, 0)) / 2 for preview, text export and fitting.');}catch(e){message(e.message,true);}
+  try {
+    const r=averaged('r'), b=averaged('b'), r2=averaged('r2'), b2=averaged('b2');
+    state.reference={...r,data:averageRayleigh(r,b,r2,b2)};
+    const comparison=rayleighPairComparison(r,b,r2,b2);
+    const format=value=>value.toLocaleString('en-US',{maximumSignificantDigits:8});
+    $('rayleigh-difference').textContent=comparison.differencePercent===null
+      ? 'Total-intensity difference: N/A (both totals are zero)'
+      : `Total-intensity difference: ${comparison.differencePercent.toFixed(2)}%`;
+    $('rayleigh-totals').textContent=`Pair 1 total (ΣA): ${format(comparison.firstTotal)} · Pair 2 total (ΣB): ${format(comparison.secondTotal)}`;
+    $('rayleigh-comparison').hidden=false;
+    invalidate();renderImage('r',state.reference);
+    message('Applied R = (max(1 − 2, 0) + max(3 − 4, 0)) / 2 for preview, text export and fitting.');
+  } catch(e) { message(e.message,true); }
 });
+
 function renderImage(key, image){
   if (!image) return;
   try {

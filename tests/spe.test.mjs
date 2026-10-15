@@ -41,3 +41,19 @@ test('four-file Rayleigh zeros negative pair differences before averaging', asyn
  assert.throws(()=>averageRayleigh(first,second,{...third,height:2},{...fourth,height:2}),/four/);
  assert.throws(()=>averageRayleigh(first,second,third,{...fourth,height:2}),/dimensions/);
 });
+
+test('Rayleigh pair comparison uses clipped totals and symmetric percentage', async()=>{
+ const {rayleighPairComparison}=await import('../spe.js');
+ const image=values=>({width:values.length,height:1,data:new Float64Array(values)});
+ const a=image([10,4]), b=image([2,10]), c=image([26,4]), d=image([6,0]);
+ const result=rayleighPairComparison(a,b,c,d);
+ assert.equal(result.firstTotal,8);assert.equal(result.secondTotal,24);
+ assert.equal(result.differencePercent,100);
+ assert.equal(rayleighPairComparison(c,d,a,b).differencePercent,100);
+ assert.equal(rayleighPairComparison(a,b,a,b).differencePercent,0);
+ assert.equal(rayleighPairComparison(b,a,d,c).differencePercent,200);
+ assert.equal(rayleighPairComparison(a,a,c,c).differencePercent,null);
+ assert.deepEqual([...a.data],[10,4]);
+ assert.throws(()=>rayleighPairComparison(a,b,{...c,height:2},{...d,height:2}),/four/);
+ assert.throws(()=>rayleighPairComparison(a,b,c,{...d,height:2}),/dimensions/);
+});
