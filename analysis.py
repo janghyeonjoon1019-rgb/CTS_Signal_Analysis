@@ -71,7 +71,7 @@ def calc_intensity_rayleigh(data):
     s1, s2 = 400, 650
     net_signal = np.sum(data[s1:s2]) - np.sum(background[s1:s2])
     if net_signal < 0:
-        raise ValueError("Rayleigh 적분 신호가 음수입니다. Background와 선택 구간을 확인하세요.")
+        raise ValueError("Rayleigh integral is negative. Check the background and selected range.")
 
     # return net_signal:int, background:array(1024)
     return net_signal, background
@@ -196,11 +196,11 @@ def configure(options):
     global n1, n2, N1, N2, centerpixel, wavelengths, Mask, ELR, ELT, shot_R, shot_T
     n1, n2 = int(options['n1']), int(options['n2'])
     if not 0 <= n1 < n2 < 1024:
-        raise ValueError('Notch는 0 ≤ from < to < 1024 이어야 합니다.')
+        raise ValueError('Notch must satisfy 0 <= from < to < 1024.')
     ELR, ELT = float(options['ELR']), float(options['ELT'])
     shot_R, shot_T = int(options['shot_R']), int(options['shot_T'])
     if min(ELR, ELT, shot_R, shot_T) <= 0:
-        raise ValueError('레이저 에너지와 누적 shot 수는 양수여야 합니다.')
+        raise ValueError('Laser energies and accumulated shot counts must be positive.')
     centerpixel = (n1 + n2) // 2
     wavelengths = probe_wavelength + (np.arange(1024) - centerpixel + 1) * pixel
     # Mask and shaded notch use the same detector pixel coordinates.
@@ -212,9 +212,9 @@ def analyze(rayleigh, thomson_data, options, progress=None):
     configure(options)
     R, T = np.asarray(rayleigh, dtype=float), np.asarray(thomson_data, dtype=float)
     if R.ndim != 2 or R.shape != T.shape or R.shape[1] != 1024 or len(R) == 0:
-        raise ValueError('R/T는 동일한 Y 구간의 1024열 행렬이어야 합니다.')
+        raise ValueError('R and T must have matching Y bins and 1024 columns.')
     if not np.all(np.isfinite(R)) or not np.all(np.isfinite(T)):
-        raise ValueError('입력에 NaN 또는 무한대가 있습니다.')
+        raise ValueError('Input contains NaN or infinite values.')
     centers = np.array([calc_center(row) for row in T])
     widths = np.abs(np.gradient(centers)) if len(T) > 1 else np.zeros(1)
     rows = []
@@ -224,10 +224,10 @@ def analyze(rayleigh, thomson_data, options, progress=None):
         ir, br = calc_intensity_rayleigh(r)
         it, bt = calc_intensity_thomson(t, int(centers[i]))
         if ir <= 0 or it <= 0:
-            raise ValueError(f'Y 구간 {i + 1}: 적분 신호가 0 이하입니다 (R={ir:.4g}, T={it:.4g}).')
+            raise ValueError(f'Y bin {i + 1}: integrated signal is not positive (R={ir:.4g}, T={it:.4g}).')
         net = t - bt
         if np.max(net) <= 0:
-            raise ValueError(f'Y 구간 {i + 1}: 정규화할 신호가 없습니다.')
+            raise ValueError(f'Y bin {i + 1}: no positive signal available for normalization.')
         net = net / np.max(net)
         te, ti = 30., 30.
         converged = False
@@ -241,12 +241,12 @@ def analyze(rayleigh, thomson_data, options, progress=None):
                 z = get_z_avg(density, old_te)
                 next_si = z * alpha**4 / (1 + alpha**2) / (1 + alpha**2 * (1 + z * old_te / old_ti))
                 if not np.isfinite(next_si) or next_si <= 0:
-                    raise ValueError(f'Y 구간 {i + 1}: 밀도 반복값이 유효하지 않습니다.')
+                    raise ValueError(f'Y bin {i + 1}: invalid density iteration value.')
                 if abs(si - next_si) <= .005:
                     break
                 si = next_si
             else:
-                raise ValueError(f'Y 구간 {i + 1}: 밀도 계산이 200회 내 수렴하지 않았습니다.')
+                raise ValueError(f'Y bin {i + 1}: density did not converge within 200 iterations.')
             # Evaluate convolution on the full, uniformly spaced detector grid;
             # masking before convolution would join the two sides of the notch.
             def fit_model(wavelengths, Te, Ti, center):
@@ -259,7 +259,7 @@ def analyze(rayleigh, thomson_data, options, progress=None):
             result = model.fit(net[Mask], params, wavelengths=wavelengths[Mask],
                                method='differential_evolution', fit_kws={'seed': 42}, max_nfev=12000)
             if not result.success:
-                raise ValueError(f'Y 구간 {i + 1}: 피팅 실패: {result.message}')
+                raise ValueError(f'Y bin {i + 1}: fitting failed: {result.message}')
             te, ti = result.params['Te'].value, result.params['Ti'].value
             fitted_center = result.params['center'].value
             if abs(te-old_te) <= 2 and abs(ti-old_ti) <= 5:

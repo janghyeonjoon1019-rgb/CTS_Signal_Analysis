@@ -1,7 +1,7 @@
 /* Python stays in this worker so a fit never blocks the interface. */
 let runtime;
 async function initialize() {
-  postMessage({type: 'status', message: 'Python 및 과학 계산 패키지를 불러오는 중… (최초 실행 시 수 분 소요)'});
+  postMessage({type: 'status', message: 'Loading Python and scientific packages… (the first run may take several minutes)'});
   importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js');
   const py = await loadPyodide({indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/'});
   await py.loadPackage(['numpy', 'scipy', 'astropy', 'matplotlib', 'pandas', 'h5py', 'wrapt', 'micropip']);
