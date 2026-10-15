@@ -9,8 +9,10 @@ async function initialize() {
 await micropip.install(['xarray==2025.1.2', 'plasmapy==2025.8.0', 'lmfit==1.3.4'])`);
   const response = await fetch('analysis.py');
   if (!response.ok) throw new Error(`analysis.py: HTTP ${response.status}`);
-  await py.runPythonAsync(await response.text());
+  py.FS.writeFile('analysis.py', await response.text());
+  await py.runPythonAsync("exec(compile(open('analysis.py').read(), 'analysis.py', 'exec'), globals())");
   py.globals.set('report_progress', (index, total) => postMessage({type: 'progress', index, total}));
+  py.globals.set('report_bin_error', (index, stage, message) => postMessage({type: 'bin_error', index, stage, message}));
   return py;
 }
 onmessage = async ({data}) => {
@@ -20,7 +22,7 @@ onmessage = async ({data}) => {
     py.globals.set('payload_json', JSON.stringify(data));
     const result = await py.runPythonAsync(`import json
 payload = json.loads(payload_json)
-json.dumps(analyze(payload['R'], payload['T'], payload['options'], report_progress), allow_nan=False)`);
+json.dumps(analyze(payload['R'], payload['T'], payload['options'], report_progress, report_bin_error), allow_nan=False)`);
     postMessage({type: 'result', result: JSON.parse(result)});
   } catch (error) {
     runtime = null;

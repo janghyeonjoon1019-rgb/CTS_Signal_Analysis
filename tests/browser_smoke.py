@@ -10,10 +10,13 @@ from test_analysis import synthetic, OPTIONS
 r,t=synthetic()
 payload={'R':[row.tolist() for row in r],'T':[row.tolist() for row in t],'options':OPTIONS}
 output=Path('test-results');output.mkdir(exist_ok=True)
-def spe(row, second=None):
+def spe(row, second=None, bad_y=None):
  header=bytearray(4100);struct.pack_into('<H',header,42,1024);struct.pack_into('<H',header,656,64);struct.pack_into('<i',header,1446,2);struct.pack_into('<h',header,108,0);struct.pack_into('<f',header,1992,2.5)
- return bytes(header)+struct.pack('<131072f',*(row*64+(row if second is None else second)*64))
-fixtures={'r':spe([.25*v+7.5 for v in payload['R'][0]], [.75*v+7.5 for v in payload['R'][0]]),'b':spe([7.5]*1024),'r2':spe([1.5*v+30.25 for v in payload['R'][0]]),'b2':spe([30.25]*1024),'t':spe(payload['T'][0])}
+ first=row*64;other=(row if second is None else second)*64
+ if bad_y is not None:
+  first[bad_y*1024:(bad_y+1)*1024]=[100.]*1024;other[bad_y*1024:(bad_y+1)*1024]=[100.]*1024
+ return bytes(header)+struct.pack('<131072f',*(first+other))
+fixtures={'r':spe([7.5-.25*v for v in payload['R'][0]], [7.5-.75*v for v in payload['R'][0]]),'b':spe([7.5]*1024),'r2':spe([1.5*v+30.25 for v in payload['R'][0]]),'b2':spe([30.25]*1024),'t':spe(payload['T'][0],bad_y=1)}
 cache=Path('/tmp/cts-network-cache');cache.mkdir(exist_ok=True)
 with sync_playwright() as p:
  browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
@@ -68,7 +71,7 @@ with sync_playwright() as p:
  page.locator('#run').click();assert 'First' in page.locator('#status').inner_text()
  page.locator('#b2-all').check()
  page.locator('#subtract').click()
- for key,value in {'y-from':4,'y-to':60,'y-step':1,'n1':475,'n2':485,'ELR':1,'ELT':1,'shot_R':6,'shot_T':1}.items():
+ for key,value in {'y-from':4,'y-to':60,'y-step':1,'n1':475,'n2':485,'ELR':1,'ELT':1,'shot_R':6,'shot_T':1,'fwhm':8}.items():
   page.locator('#'+key).fill(str(value))
  for key in ['r','t']:
   canvas=page.locator('#'+key+'-preview')
@@ -93,31 +96,69 @@ with sync_playwright() as p:
   page.locator('#'+key+'-reset').click()
   assert canvas_pixels!=canvas.evaluate('(el)=>el.toDataURL()')
   assert initial==canvas.evaluate('(el)=>el.toDataURL()')
- page.locator('#y-from').fill('0');page.locator('#y-to').fill('2');page.locator('#y-step').fill('1')
+ page.locator('#y-from').fill('0');page.locator('#y-to').fill('3');page.locator('#y-step').fill('1')
+ page.locator('#fwhm').fill('0');page.locator('#run').click();assert 'FWHM' in page.locator('#status').inner_text();page.locator('#fwhm').fill('8')
  page.locator('#ELT').fill('0');page.locator('#run').click();assert 'positive' in page.locator('#status').inner_text();page.locator('#ELT').fill('1')
  with page.expect_download() as dl:page.locator('#export-signals').click()
- text=Path(dl.value.path()).read_text();assert len(text.strip().splitlines())==2048
- expected=(payload['R'][0] if dl.value.suggested_filename=='R.txt' else payload['T'][0])*2
+ text=Path(dl.value.path()).read_text();assert len(text.strip().splitlines())==3072
+ expected=payload['R'][0]*3 if dl.value.suggested_filename=='R.txt' else payload['T'][0]+[100.]*1024+payload['T'][0]
  assert max(abs(float(actual)-value) for actual,value in zip(text.strip().splitlines(),expected))<.001
  page.screenshot(path=str(output/'preview-overlays.png'),full_page=True)
  page.locator('#run').click();page.locator('#cancel').click();assert 'cancelled' in page.locator('#status').inner_text()
  page.locator('#run').click()
  print('Fitting started',flush=True)
- page.wait_for_function("!document.querySelector('#results').hidden || document.querySelector('#status').classList.contains('error')",timeout=600000)
+ page.wait_for_function("!document.querySelector('#results').hidden || document.querySelector('#status').classList.contains('error')",timeout=900000)
  print('STATUS',page.locator('#status').inner_text(),flush=True)
  assert not page.locator('#results').evaluate('(el)=>el.hidden'), page.locator('#status').inner_text()
- assert page.locator('#result-body tr').count()==2
+ assert page.locator('#result-body tr').count()==3
  cells=page.locator('#result-body tr').first.locator('td').all_text_contents();print('RESULT',cells,flush=True)
- assert abs(float(cells[2])-30)<2 and abs(float(cells[3])-15)<2 and cells[-1]=='Converged'
- assert page.locator('#spectra-list .spectrum-card').count()==2
- for index in range(2):
+ assert abs(float(cells[2])-30)<2 and abs(float(cells[3])-15)<2 and cells[6]=='Converged'
+ assert page.locator('#spectra-list .spectrum-card').count()==3
+ for index in [0,2]:
   assert page.locator('#spectrum-'+str(index)).is_visible()
   assert page.locator('#calibration-'+str(index)).is_visible()
+ failed=page.locator('#result-body tr').nth(1).locator('td').all_text_contents()
+ assert failed[0]=='1–2' and failed[1]=='—' and failed[6]=='Failed / skipped'
+ assert 'thomson_integral' in failed[7]
+ assert page.locator('#run-errors li').count()==1
+ assert 'Y [1, 2)' in page.locator('#run-errors').inner_text()
+ assert page.locator('#spectrum-row-1 details').count()==1
+ page.locator('#spectrum-row-1 summary').click()
+ assert 'Traceback' in page.locator('#spectrum-row-1 pre').inner_text()
+ assert 'FWHM 8 px' in page.locator('#result-meta').inner_text()
+ # A missing middle bin must not be joined by a density line.
+ assert page.locator('#density').evaluate("""el=>{const c=el.getContext('2d');const d=c.getImageData(el.width/2,120,1,40).data;return !Array.from({length:d.length/4},(_,i)=>d[i*4]<40&&d[i*4+1]>100&&d[i*4+1]<150&&d[i*4+2]>80&&d[i*4+2]<140).some(Boolean)}""")
+ downloads=[];page.on('download',lambda d:downloads.append(d))
+ with page.expect_download():page.locator('#export-results').click()
+ page.wait_for_timeout(250)
+ exported={d.suggested_filename:Path(d.path()).read_text() for d in downloads}
+ assert set(exported)=={'CTS_results.csv','CTS_results.json'}
+ data=json.loads(exported['CTS_results.json'])
+ assert data['metadata']['fwhm_px']==8 and data['options']['fwhm']==8
+ assert 'abs(file1 - file2)' in data['metadata']['rayleigh_formula']
+ assert data['rows'][1]['ne'] is None and data['rows'][1]['status']=='failed'
+ assert data['rows'][2]['index']==2
+ import csv,io
+ records=list(csv.DictReader(io.StringIO(exported['CTS_results.csv'])))
+ assert records[1]['bin_number']=='2' and records[1]['y_from']=='1' and records[1]['ne']==''
+ assert records[1]['error_stage']=='thomson_integral' and records[2]['status']=='ok'
  assert not __import__('re').search('[가-힣]',page.locator('body').inner_text())
  page.screenshot(path=str(output/'results.png'),full_page=True)
+ # The reused worker must also handle an entirely failed run with new FWHM.
+ page.locator('#t-file').set_input_files({'name':'flat.spe','mimeType':'application/octet-stream','buffer':spe([100.]*1024)})
+ page.wait_for_function("document.querySelector('#t-name').textContent.includes('flat.spe')")
+ page.locator('#fwhm').fill('4.8')
+ page.locator('#run').click()
+ page.wait_for_function("!document.querySelector('#results').hidden",timeout=30000)
+ assert page.locator('#result-body tr.failed-bin').count()==3
+ assert page.locator('#run-errors li').count()==3
+ assert page.locator('#spectra-list .failed-bin').count()==3
+ assert '0 succeeded, 3 failed' in page.locator('#status').inner_text()
+ assert 'FWHM 4.8 px' in page.locator('#result-meta').inner_text()
+ page.screenshot(path=str(output/'all-failed.png'),full_page=True)
  page.locator('#n1').fill('474');assert page.locator('#results').evaluate('(el)=>el.hidden')
  page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(output/'mobile.png'),full_page=True)
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
  assert not errors, errors
- print('PASS zero defaults, English UI, select-all, overlays, zoom/pan/reset, four-file export, cancel, real two-bin Python fit, all spectra, invalidation, mobile layout',flush=True)
+ print('PASS zero defaults, English UI, select-all, overlays, zoom/pan/reset, four-file export, cancel, real mixed-success Python fit, preserved missing bins, FWHM, error exports, all-failed rerun, invalidation, mobile layout',flush=True)
  browser.close()

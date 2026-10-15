@@ -1,6 +1,7 @@
 """Browser/CPython fitting engine adapted from the supplied Sn-119 model."""
 import numpy as np
 import math
+import traceback
 
 import astropy.units as u
 import scipy.ndimage as ndimage
@@ -193,7 +194,7 @@ def custom_thomson_model(wavelengths, ne, Te, Ti, center, width):
 
 
 def configure(options):
-    global n1, n2, N1, N2, centerpixel, wavelengths, Mask, ELR, ELT, shot_R, shot_T
+    global n1, n2, N1, N2, centerpixel, wavelengths, Mask, ELR, ELT, shot_R, shot_T, fwhm, sigma
     n1, n2 = int(options['n1']), int(options['n2'])
     if not 0 <= n1 < n2 < 1024:
         raise ValueError('Notch must satisfy 0 <= from < to < 1024.')
@@ -201,6 +202,10 @@ def configure(options):
     shot_R, shot_T = int(options['shot_R']), int(options['shot_T'])
     if min(ELR, ELT, shot_R, shot_T) <= 0:
         raise ValueError('Laser energies and accumulated shot counts must be positive.')
+    fwhm = float(options.get('fwhm', 8))
+    if not np.isfinite(fwhm) or fwhm <= 0:
+        raise ValueError('Instrument FWHM must be a finite positive value in pixels.')
+    sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
     centerpixel = (n1 + n2) // 2
     wavelengths = probe_wavelength + (np.arange(1024) - centerpixel + 1) * pixel
     # Mask and shaded notch use the same detector pixel coordinates.
@@ -208,69 +213,139 @@ def configure(options):
     Mask &= ~((np.arange(1024) >= n1) & (np.arange(1024) <= n2))
 
 
-def analyze(rayleigh, thomson_data, options, progress=None):
+def _failed_bin(index, stage, error, trace):
+    # Nulls preserve missing-bin positions without inventing zero measurements.
+    fields = ['ne', 'Te', 'Ti', 'Z', 'velocity', 'center', 'fitted_center', 'width',
+              'rayleigh_integral', 'thomson_integral', 'redchi', 'signal', 'fit',
+              'rayleigh', 'rayleigh_background']
+    return dict.fromkeys(fields) | dict(
+        index=index, status='failed', converged=False, iterations=None, warnings=[],
+        error=dict(stage=stage, type=type(error).__name__, message=str(error), traceback=trace))
+
+
+def _fit_bin(r, t, center, width, index, context):
+    context['stage'] = 'input_validation'
+    if not np.all(np.isfinite(r)):
+        raise ValueError('Rayleigh input contains NaN or infinite values.')
+    context['stage'] = 'rayleigh_integral'
+    ir, br = calc_intensity_rayleigh(r)
+    if ir <= 0:
+        raise ValueError(f'Rayleigh integrated signal is not positive (R={ir:.4g}).')
+    context['stage'] = 'thomson_integral'
+    it, bt = calc_intensity_thomson(t, center)
+    if it <= 0:
+        raise ValueError(f'Thomson integrated signal is not positive (T={it:.4g}).')
+    context['stage'] = 'normalization'
+    net = t - bt
+    if np.max(net) <= 0:
+        raise ValueError('No positive signal available for normalization.')
+    net = net / np.max(net)
+    te, ti = 30., 30.
+    converged = False
+    fitted_center = float(center)
+    for iteration in range(20):
+        old_te, old_ti = te, ti
+        si = 1.
+        context['stage'] = 'density_iteration'
+        for density_iteration in range(200):
+            density = 2.5e25 * it / ir * ELR / ELT / cross_section_ratio / si * shot_R / shot_T
+            alpha = .8 * np.sqrt(density / old_te * 1e-22)
+            z = get_z_avg(density, old_te)
+            next_si = z * alpha**4 / (1 + alpha**2) / (1 + alpha**2 * (1 + z * old_te / old_ti))
+            if not np.isfinite(next_si) or next_si <= 0:
+                raise ValueError('Invalid density iteration value.')
+            if abs(si - next_si) <= .005:
+                break
+            si = next_si
+        else:
+            raise ValueError('Density did not converge within 200 iterations.')
+        context['stage'] = 'fitting'
+        # Convolve the full uniform grid before excluding masked pixels.
+        def fit_model(wavelengths, Te, Ti, center):
+            return custom_thomson_model(globals()['wavelengths'], density, Te, Ti, center, width)[Mask]
+        model = Model(fit_model, independent_vars=['wavelengths'])
+        params = model.make_params(Te=old_te, Ti=old_ti, center=center)
+        params['Te'].set(min=1, max=70)
+        params['Ti'].set(min=1, max=70)
+        params['center'].set(min=center-10, max=center+10)
+        result = model.fit(net[Mask], params, wavelengths=wavelengths[Mask],
+                           method='differential_evolution', fit_kws={'seed': 42}, max_nfev=12000)
+        if not result.success:
+            raise ValueError(f'Optimizer failed: {result.message}')
+        te, ti = result.params['Te'].value, result.params['Ti'].value
+        fitted_center = result.params['center'].value
+        if abs(te-old_te) <= 2 and abs(ti-old_ti) <= 5:
+            converged = True
+            break
+    if not converged:
+        context['stage'] = 'temperature_convergence'
+        raise ValueError('Temperature did not converge within 20 iterations.')
+    context['stage'] = 'output_validation'
+    velocity = (centerpixel-center) * pixel / 532 * 3e8 / np.sin(np.deg2rad(135/2)) / 2
+    fit = custom_thomson_model(wavelengths, density, te, ti, fitted_center, width)
+    z = get_z_avg(density, te)
+    if not np.all(np.isfinite([density, te, ti, z, velocity, fitted_center, result.redchi])) or not np.all(np.isfinite(fit)):
+        raise ValueError('Non-finite fitted values or model output.')
+    return dict(index=index, status='ok', error=None, warnings=[], ne=float(density),
+                Te=float(te), Ti=float(ti), Z=float(z), velocity=float(velocity),
+                center=int(center), fitted_center=float(fitted_center), width=float(width),
+                rayleigh_integral=float(ir), thomson_integral=float(it), converged=True,
+                iterations=iteration+1, redchi=float(result.redchi), signal=net.tolist(),
+                fit=fit.tolist(), rayleigh=r.tolist(), rayleigh_background=br.tolist())
+
+
+def analyze(rayleigh, thomson_data, options, progress=None, on_bin_error=None):
+    options = dict(options)
+    options.setdefault('fwhm', 8.)
     configure(options)
     R, T = np.asarray(rayleigh, dtype=float), np.asarray(thomson_data, dtype=float)
     if R.ndim != 2 or R.shape != T.shape or R.shape[1] != 1024 or len(R) == 0:
         raise ValueError('R and T must have matching Y bins and 1024 columns.')
-    if not np.all(np.isfinite(R)) or not np.all(np.isfinite(T)):
-        raise ValueError('Input contains NaN or infinite values.')
-    centers = np.array([calc_center(row) for row in T])
-    widths = np.abs(np.gradient(centers)) if len(T) > 1 else np.zeros(1)
+    centers, failures = [None] * len(T), {}
+    # Reject unusable Thomson centers before they can contaminate adjacent widths.
+    for i, t in enumerate(T):
+        stage = 'input_validation'
+        try:
+            if not np.all(np.isfinite(t)):
+                raise ValueError('Thomson input contains NaN or infinite values.')
+            stage = 'center'
+            center = calc_center(t)
+            stage = 'thomson_integral'
+            integral, _ = calc_intensity_thomson(t, center)
+            if integral <= 0:
+                raise ValueError(f'Thomson integrated signal is not positive (T={integral:.4g}).')
+            centers[i] = center
+        except Exception as error:
+            failures[i] = _failed_bin(i, stage, error, traceback.format_exc())
     rows = []
     for i, (r, t) in enumerate(zip(R, T)):
         if progress:
             progress(i, len(T))
-        ir, br = calc_intensity_rayleigh(r)
-        it, bt = calc_intensity_thomson(t, int(centers[i]))
-        if ir <= 0 or it <= 0:
-            raise ValueError(f'Y bin {i + 1}: integrated signal is not positive (R={ir:.4g}, T={it:.4g}).')
-        net = t - bt
-        if np.max(net) <= 0:
-            raise ValueError(f'Y bin {i + 1}: no positive signal available for normalization.')
-        net = net / np.max(net)
-        te, ti = 30., 30.
-        converged = False
-        fitted_center = float(centers[i])
-        for iteration in range(20):
-            old_te, old_ti = te, ti
-            si = 1.
-            for density_iteration in range(200):
-                density = 2.5e25 * it / ir * ELR / ELT / cross_section_ratio / si * shot_R / shot_T
-                alpha = .8 * np.sqrt(density / old_te * 1e-22)
-                z = get_z_avg(density, old_te)
-                next_si = z * alpha**4 / (1 + alpha**2) / (1 + alpha**2 * (1 + z * old_te / old_ti))
-                if not np.isfinite(next_si) or next_si <= 0:
-                    raise ValueError(f'Y bin {i + 1}: invalid density iteration value.')
-                if abs(si - next_si) <= .005:
-                    break
-                si = next_si
-            else:
-                raise ValueError(f'Y bin {i + 1}: density did not converge within 200 iterations.')
-            # Evaluate convolution on the full, uniformly spaced detector grid;
-            # masking before convolution would join the two sides of the notch.
-            def fit_model(wavelengths, Te, Ti, center):
-                return custom_thomson_model(globals()['wavelengths'], density, Te, Ti, center, widths[i])[Mask]
-            model = Model(fit_model, independent_vars=['wavelengths'])
-            params = model.make_params(Te=old_te, Ti=old_ti, center=centers[i])
-            params['Te'].set(min=1, max=70)
-            params['Ti'].set(min=1, max=70)
-            params['center'].set(min=centers[i]-10, max=centers[i]+10)
-            result = model.fit(net[Mask], params, wavelengths=wavelengths[Mask],
-                               method='differential_evolution', fit_kws={'seed': 42}, max_nfev=12000)
-            if not result.success:
-                raise ValueError(f'Y bin {i + 1}: fitting failed: {result.message}')
-            te, ti = result.params['Te'].value, result.params['Ti'].value
-            fitted_center = result.params['center'].value
-            if abs(te-old_te) <= 2 and abs(ti-old_ti) <= 5:
-                converged = True
-                break
-        velocity = (centerpixel-centers[i]) * pixel / 532 * 3e8 / np.sin(np.deg2rad(135/2)) / 2
-        rows.append(dict(index=i, ne=float(density), Te=float(te), Ti=float(ti),
-                         Z=get_z_avg(density, te), velocity=float(velocity),
-                         center=int(centers[i]), fitted_center=float(fitted_center), width=float(widths[i]),
-                         rayleigh_integral=float(ir), thomson_integral=float(it),
-                         converged=converged, iterations=iteration+1, redchi=float(result.redchi),
-                         signal=net.tolist(), fit=custom_thomson_model(wavelengths, density, te, ti, fitted_center, widths[i]).tolist(),
-                         rayleigh=r.tolist(), rayleigh_background=br.tolist()))
-    return dict(rows=rows, wavelengths=wavelengths.tolist(), options=options)
+        if i in failures:
+            row = failures[i]
+        else:
+            context = {'stage': 'width'}
+            warnings = []
+            try:
+                left = centers[i-1] if i > 0 else None
+                right = centers[i+1] if i+1 < len(T) else None
+                if left is not None and right is not None:
+                    width = abs((right-left)/2)
+                elif left is not None:
+                    width = abs(centers[i]-left)
+                elif right is not None:
+                    width = abs(right-centers[i])
+                else:
+                    width = 0.
+                if len(T) > 1 and ((i > 0 and left is None) or (i+1 < len(T) and right is None)):
+                    warnings.append('An adjacent Thomson center is unavailable. Velocity broadening uses the available immediate neighbor, or width 0 if neither is available.')
+                row = _fit_bin(r, t, centers[i], width, i, context)
+                row['warnings'] = warnings
+            except Exception as error:
+                row = _failed_bin(i, context['stage'], error, traceback.format_exc())
+        rows.append(row)
+        if row['status'] == 'failed' and on_bin_error:
+            on_bin_error(i, row['error']['stage'], row['error']['message'])
+    return dict(rows=rows, wavelengths=wavelengths.tolist(), options=options,
+                summary=dict(total=len(rows), succeeded=sum(row['status'] == 'ok' for row in rows),
+                             failed=sum(row['status'] == 'failed' for row in rows)))
