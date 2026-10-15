@@ -16,7 +16,7 @@ def spe(row, second=None, bad_y=None):
  if bad_y is not None:
   first[bad_y*1024:(bad_y+1)*1024]=[100.]*1024;other[bad_y*1024:(bad_y+1)*1024]=[100.]*1024
  return bytes(header)+struct.pack('<131072f',*(first+other))
-fixtures={'r':spe([7.5-.25*v for v in payload['R'][0]], [7.5-.75*v for v in payload['R'][0]]),'b':spe([7.5]*1024),'r2':spe([1.5*v+30.25 for v in payload['R'][0]]),'b2':spe([30.25]*1024),'t':spe(payload['T'][0],bad_y=1)}
+fixtures={'r':spe([7.5-.25*v for v in payload['R'][0]], [7.5-.75*v for v in payload['R'][0]]),'b':spe([7.5]*1024),'r2':spe([2*v+30.25 for v in payload['R'][0]]),'b2':spe([30.25]*1024),'t':spe(payload['T'][0],bad_y=1)}
 cache=Path('/tmp/cts-network-cache');cache.mkdir(exist_ok=True)
 with sync_playwright() as p:
  browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
@@ -135,7 +135,7 @@ with sync_playwright() as p:
  assert set(exported)=={'CTS_results.csv','CTS_results.json'}
  data=json.loads(exported['CTS_results.json'])
  assert data['metadata']['fwhm_px']==8 and data['options']['fwhm']==8
- assert 'abs(file1 - file2)' in data['metadata']['rayleigh_formula']
+ assert 'max(file1 - file2, 0)' in data['metadata']['rayleigh_formula']
  assert data['rows'][1]['ne'] is None and data['rows'][1]['status']=='failed'
  assert data['rows'][2]['index']==2
  import csv,io

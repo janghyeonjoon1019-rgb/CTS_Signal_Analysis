@@ -54,5 +54,5 @@ export function averageRayleigh(first, second, third, fourth) {
   if (first.width !== third.width || first.height !== third.height) {
     throw new Error('All four Rayleigh SPE files must have matching image dimensions.');
   }
-  return a.map((value, i) => (Math.abs(value) + Math.abs(b[i])) / 2);
+  return a.map((value, i) => (Math.max(value, 0) + Math.max(b[i], 0)) / 2);
 }

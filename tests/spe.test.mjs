@@ -31,11 +31,12 @@ test('Y bins average contiguous rows including last partial bin, with unchanged 
  assert.throws(()=>averageFrames({width:2,height:1,frames:[]},[]),/frame/);
 });
 
-test('four-file Rayleigh averages absolute pair differences with equal weight', async()=>{
+test('four-file Rayleigh zeros negative pair differences before averaging', async()=>{
  const {averageRayleigh}=await import('../spe.js');
  const image=values=>({width:2,height:1,data:new Float64Array(values)});
  const first=image([10,4]), second=image([2,10]), third=image([26,4]), fourth=image([6,0]);
- assert.deepEqual([...averageRayleigh(first,second,third,fourth)],[14,5]);
+ assert.deepEqual([...averageRayleigh(first,second,third,fourth)],[14,2]);
+ assert.deepEqual([...averageRayleigh(second,first,fourth,third)],[0,3]);
  assert.deepEqual([...first.data],[10,4]);
  assert.throws(()=>averageRayleigh(first,second,{...third,height:2},{...fourth,height:2}),/four/);
  assert.throws(()=>averageRayleigh(first,second,third,{...fourth,height:2}),/dimensions/);

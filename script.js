@@ -57,7 +57,7 @@ function framesChanged(key){
 }
 for(const key of ['r','b','r2','b2','t'])$(key+'-file').addEventListener('change',e=>{if(e.target.files[0])loadFile(key,e.target.files[0]);});
 $('subtract').addEventListener('click',()=>{
-  try{const r=averaged('r'), b=averaged('b'), r2=averaged('r2'), b2=averaged('b2');state.reference={...r,data:averageRayleigh(r,b,r2,b2)};invalidate();renderImage('r',state.reference);message('Applied R = (|1 − 2| + |3 − 4|) / 2 for preview, text export and fitting.');}catch(e){message(e.message,true);}
+  try{const r=averaged('r'), b=averaged('b'), r2=averaged('r2'), b2=averaged('b2');state.reference={...r,data:averageRayleigh(r,b,r2,b2)};invalidate();renderImage('r',state.reference);message('Applied R = (max(1 − 2, 0) + max(3 − 4, 0)) / 2 for preview, text export and fitting.');}catch(e){message(e.message,true);}
 });
 function renderImage(key, image){
   if (!image) return;
@@ -94,7 +94,7 @@ function prepare(){
   if(options.ELR<=0||options.ELT<=0||![options.shot_R,options.shot_T].every(v=>Number.isInteger(v)&&v>0))throw new Error('Laser energies must be positive and shot counts must be positive integers.');
   if(options.fwhm<=0)throw new Error('Instrument FWHM must be a positive value in pixels.');
   const R=binRows(state.reference.data,1024,state.reference.height,from,to,step),T=binRows(state.thomson.data,1024,state.thomson.height,from,to,step);
-  const metadata={from,to,step,rayleigh_formula:'(abs(file1 - file2) + abs(file3 - file4)) / 2',files:Object.fromEntries(['r','b','r2','b2','t'].map(k=>[k,{name:$(k+'-file').files[0].name,frames:selected(k).map(i=>i+1)}])),pixel_nm:.002266,probe_nm:532,angle_deg:135,fwhm_px:options.fwhm};
+  const metadata={from,to,step,rayleigh_formula:'(max(file1 - file2, 0) + max(file3 - file4, 0)) / 2',files:Object.fromEntries(['r','b','r2','b2','t'].map(k=>[k,{name:$(k+'-file').files[0].name,frames:selected(k).map(i=>i+1)}])),pixel_nm:.002266,probe_nm:532,angle_deg:135,fwhm_px:options.fwhm};
   return {R,T,options,metadata};
 }
 function download(name,text,type='text/plain'){
