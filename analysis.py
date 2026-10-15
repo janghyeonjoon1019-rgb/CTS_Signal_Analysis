@@ -4,9 +4,9 @@ import math
 import traceback
 
 import astropy.units as u
-import scipy.ndimage as ndimage
 
 from scipy.interpolate import RectBivariateSpline
+from scipy.signal import fftconvolve
 
 from plasmapy.diagnostics import thomson
 from lmfit import Model, Parameters
@@ -56,6 +56,9 @@ cross_section_ratio = 132
 # Instrument Function
 fwhm =8 # pixel, sqrt(4^2-(20/13)^2) 4.8 pixel 程度 20umの入口スリットが4 pixelに見えるから
 sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
+
+# Resolve narrow intrinsic peaks before broadening; outputs stay on detector pixels.
+MODEL_OVERSAMPLE = 64
 
 # Rayleigh Signal calculation
 def calc_intensity_rayleigh(data):
@@ -162,6 +165,10 @@ def custom_thomson_model(wavelengths, ne, Te, Ti, center, width):
     ion_species = [f"Sn-119 {z1}+", f"Sn-119 {z2}+"]
     ifract = np.array([(z2 - z_avg), (z_avg - z1)])
 
+    detector_wavelengths = np.asarray(wavelengths, dtype=float)
+    factor = MODEL_OVERSAMPLE
+    wavelengths = np.linspace(detector_wavelengths[0], detector_wavelengths[-1],
+                              (len(detector_wavelengths)-1)*factor+1)
     wavelengths = wavelengths - (center-centerpixel) * pixel
 
     alpha, Skw = thomson.spectral_density(
@@ -179,14 +186,26 @@ def custom_thomson_model(wavelengths, ne, Te, Ti, center, width):
     )
 
     # Broadening by Instrument Function
-    Skw = ndimage.gaussian_filter1d(Skw, sigma)
+    # FFT keeps the finely sampled convolution affordable during optimization.
+    # Match gaussian_filter1d's four-sigma support and reflected boundaries.
+    dense_sigma = sigma * factor
+    radius = int(4 * dense_sigma + .5)
+    offsets = np.arange(-radius, radius + 1)
+    gaussian = np.exp(-.5 * (offsets / dense_sigma)**2)
+    gaussian /= gaussian.sum()
+    Skw = fftconvolve(np.pad(Skw, radius, mode='symmetric'), gaussian, mode='valid')
 
     # Broadening by Plasma Velocity
     width = int(round(width))
     if width > 1:
-        kernel = np.ones(width) / width
-        Skw = np.convolve(Skw, kernel, mode='same')
+        # Centered box of the same physical width, with trapezoidal endpoints.
+        kernel = np.ones(width * factor + 1)
+        kernel[[0, -1]] = .5
+        kernel /= width * factor
+        Skw = fftconvolve(Skw, kernel, mode='same')
 
+    # Sample only after both convolutions, then retain detector-grid normalization.
+    Skw = Skw[::factor]
     Skw /= np.max(Skw)
 
     return np.nan_to_num(Skw)
@@ -298,6 +317,7 @@ def analyze(rayleigh, thomson_data, options, progress=None, on_bin_error=None):
     options = dict(options)
     options.setdefault('fwhm', 8.)
     configure(options)
+    options['model_oversample'] = MODEL_OVERSAMPLE
     R, T = np.asarray(rayleigh, dtype=float), np.asarray(thomson_data, dtype=float)
     if R.ndim != 2 or R.shape != T.shape or R.shape[1] != 1024 or len(R) == 0:
         raise ValueError('R and T must have matching Y bins and 1024 columns.')

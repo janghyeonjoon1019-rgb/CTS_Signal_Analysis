@@ -36,6 +36,7 @@ class AnalysisTest(unittest.TestCase):
         self.assertEqual(row['width'], 0)
         self.assertEqual(len(row['fit']), 1024)
         self.assertEqual(len(out['wavelengths']), 1024)
+        self.assertEqual(out['options']['model_oversample'],64)
         self.assertTrue(np.all(np.isfinite(row['fit'])))
 
     def test_invalid_inputs_fail_before_fitting(self):
@@ -89,7 +90,8 @@ class AnalysisTest(unittest.TestCase):
 
     def test_fwhm_controls_actual_gaussian_broadening_and_resets_each_run(self):
         x = np.arange(1024)
-        source = np.exp(-.5*((x-512)/2)**2)
+        dense_x = np.arange(1023*a.MODEL_OVERSAMPLE+1)/a.MODEL_OVERSAMPLE
+        source = np.exp(-.5*((dense_x-512)/2)**2)
         for fwhm in [4.8,16.,8.]:
             a.configure({**OPTIONS, 'fwhm':fwhm})
             with patch.object(a.thomson, 'spectral_density', return_value=(1.,source.copy())):
@@ -100,3 +102,38 @@ class AnalysisTest(unittest.TestCase):
         for bad in [0,-1,float('nan'),float('inf')]:
             with self.assertRaisesRegex(ValueError,'FWHM'):
                 a.configure({**OPTIONS,'fwhm':bad})
+
+    def test_narrow_peaks_are_resolved_before_broadening(self):
+        a.configure(OPTIONS)
+        # Subpixel placement must not create an artificial imbalance.
+        def narrow_lines(wavelengths, *args, **kwargs):
+            x = (wavelengths.to_value('nm') - a.wavelengths[0])/a.pixel
+            return 1., (np.exp(-.5*((x-460.17)/.08)**2)
+                        + np.exp(-.5*((x-498.63)/.08)**2))
+        with patch.object(a.thomson, 'spectral_density', side_effect=narrow_lines):
+            curve = a.custom_thomson_model(a.wavelengths,1e25,30,15,480,2)
+        self.assertEqual(len(curve),1024)
+        self.assertAlmostEqual(curve[:480].max()/curve[480:].max(),1.,delta=.01)
+        self.assertTrue(np.all(np.isfinite(curve)))
+
+    def test_velocity_box_retains_pixel_width_and_center(self):
+        a.configure(OPTIONS)
+        x = np.arange(1024)
+        dense_x = np.arange(1023*a.MODEL_OVERSAMPLE+1)/a.MODEL_OVERSAMPLE
+        source = np.exp(-.5*((dense_x-512)/2)**2)
+        for width in [2, 5, 8]:
+            with patch.object(a.thomson,'spectral_density',return_value=(1.,source.copy())):
+                curve = a.custom_thomson_model(a.wavelengths,1e25,30,15,480,width)
+            self.assertAlmostEqual(np.sum(x*curve)/np.sum(curve),512.,places=8)
+            variance = np.sum((x-512)**2*curve)/np.sum(curve)
+            self.assertAlmostEqual(variance,4+a.sigma**2+width**2/12,delta=.02)
+
+    def test_uploaded_last_bin_parameters_converge_with_grid_refinement(self):
+        a.configure(dict(OPTIONS,n1=476,n2=486))
+        args=(a.wavelengths,5.656487049122667e25,11.167949969241352,
+              6.318223636210738,476.0867696192872,2)
+        coarse = a.custom_thomson_model(*args)
+        with patch.object(a,'MODEL_OVERSAMPLE',128):
+            fine = a.custom_thomson_model(*args)
+        self.assertLess(np.max(np.abs(coarse-fine)),.002)
+        self.assertAlmostEqual(coarse[:475].max()/coarse[475:].max(),1.,delta=.01)
