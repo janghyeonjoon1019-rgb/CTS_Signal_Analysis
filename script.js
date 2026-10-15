@@ -56,21 +56,15 @@ function framesChanged(key){
   }else{state.reference=null;clearImage('r');message('Rayleigh files/frames changed. Reapply four-file subtraction & averaging.');}
 }
 for(const key of ['r','b','r2','b2','t'])$(key+'-file').addEventListener('change',e=>{if(e.target.files[0])loadFile(key,e.target.files[0]);});
-$('comparison-single').addEventListener('change',()=>{$('rayleigh-comparison').hidden=true;});
-$('comparison-y').addEventListener('input',()=>{$('comparison-single').checked=true;$('rayleigh-comparison').hidden=true;});
 $('subtract').addEventListener('click',()=>{
   try {
     const r=averaged('r'), b=averaged('b'), r2=averaged('r2'), b2=averaged('b2');
-    const single=$('comparison-single').checked;
-    if(single && $('comparison-y').value.trim()==='')throw new Error('Enter the comparison Y coordinate.');
-    const y=single?Number($('comparison-y').value):null;
-    const comparison=rayleighPairComparison(r,b,r2,b2,y);
     state.reference={...r,data:averageRayleigh(r,b,r2,b2)};
-    const scope=single?`Y = ${y} · X [0, 1024)`:'All Y rows · X [0, 1024)';
+    const comparison=rayleighPairComparison(r,b,r2,b2);
     const format=value=>value.toLocaleString('en-US',{maximumSignificantDigits:8});
     $('rayleigh-difference').textContent=comparison.differencePercent===null
-      ? `Total-intensity difference: N/A (both totals are zero) · ${scope}`
-      : `Total-intensity difference: ${comparison.differencePercent.toFixed(2)}% · ${scope}`;
+      ? 'Total-intensity difference: N/A (both totals are zero)'
+      : `Total-intensity difference: ${comparison.differencePercent.toFixed(2)}%`;
     $('rayleigh-totals').textContent=`Pair 1 total (ΣA): ${format(comparison.firstTotal)} · Pair 2 total (ΣB): ${format(comparison.secondTotal)}`;
     $('rayleigh-comparison').hidden=false;
     invalidate();renderImage('r',state.reference);

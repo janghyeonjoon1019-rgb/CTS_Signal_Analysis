@@ -57,15 +57,3 @@ test('Rayleigh pair comparison uses clipped totals and symmetric percentage', as
  assert.throws(()=>rayleighPairComparison(a,b,{...c,height:2},{...d,height:2}),/four/);
  assert.throws(()=>rayleighPairComparison(a,b,c,{...d,height:2}),/dimensions/);
 });
-
-test('Rayleigh comparison can isolate one zero-based Y row without changing full reference', async()=>{
- const {rayleighPairComparison,averageRayleigh}=await import('../spe.js');
- const image=values=>({width:2,height:3,data:Float64Array.from(values)});
- const a=image([10,-2,20,20,0,0]),b=image([0,0,0,0,0,0]),c=image([5,0,20,20,0,0]);
- assert.equal(rayleighPairComparison(a,b,c,b,0).differencePercent,Math.abs(10-5)/7.5*100);
- assert.equal(rayleighPairComparison(a,b,c,b,1).differencePercent,0);
- assert.equal(rayleighPairComparison(a,b,c,b,2).differencePercent,null);
- assert.equal(rayleighPairComparison(a,b,c,b).firstTotal,50);
- assert.deepEqual([...averageRayleigh(a,b,c,b)],[7.5,0,20,20,0,0]);
- for(const bad of [-1,3,.5,NaN])assert.throws(()=>rayleighPairComparison(a,b,c,b,bad),/Comparison Y/);
-});
