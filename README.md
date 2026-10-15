@@ -11,7 +11,7 @@ python -m http.server 8000 --bind 127.0.0.1
 
 Open the site over HTTP; opening `index.html` through `file://` cannot load modules or workers. Include **all** application files when copying the site: `index.html`, `style.css`, `script.js`, `spe.js`, `preview.js`, `worker.js`, and `analysis.py`.
 
-Deployment is managed by the repository owner. The included Pages workflow runs **manually only** (`workflow_dispatch`); pushing code does not start that workflow. This project does not configure or enable Pages automatically.
+The included Pages workflow automatically updates the site whenever code is pushed to **main**. You can also run it manually with `workflow_dispatch`. GitHub Pages must already be enabled with Source set to **GitHub Actions**.
 
 The first analysis downloads Pyodide 0.27.7 from `cdn.jsdelivr.net` and scientific packages from `pypi.org` / `files.pythonhosted.org`. PlasmaPy 2025.8.0, lmfit 1.3.4 and xarray 2025.1.2 are pinned in the worker. Subsequent runs can reuse browser caches, but offline use is not guaranteed. PlasmaPy may make an optional public connectivity check to `api.github.com`. Use **Cancel** to terminate a running worker.
 
