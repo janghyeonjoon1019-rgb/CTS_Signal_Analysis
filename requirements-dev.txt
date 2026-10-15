@@ -1,0 +1,3 @@
+# Optional CPython regression checks; website installs its own browser runtime.
+plasmapy==2025.8.0
+lmfit==1.3.4

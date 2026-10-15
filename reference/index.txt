@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPE File Analysis Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header><h1>SPE File Analysis Tool</h1></header>
+    <main>
+        <!-- 왼쪽 패널 -->
+        <div class="panel" id="left-panel">
+            <fieldset>
+                <legend>Select File</legend>
+                <input type="file" id="fileInput" accept=".spe" onchange="handleFileSelect(this)">
+            </fieldset>
+            <fieldset>
+                <legend>Frame List (Select 1 or more)</legend>
+                <div id="frame-list-container"><p>SPE 파일을 선택하세요.</p></div>
+            </fieldset>
+            <fieldset>
+                <legend>Intensity Control</legend>
+                <div class="control-grid">
+                    <label for="rangeMinInput">min:</label>
+                    <input type="number" id="rangeMinInput" min="0" max="65535" value="0">
+                    <label for="rangeMaxInput">max:</label>
+                    <input type="number" id="rangeMaxInput" min="0" max="65535" value="65535">
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Data Cropping & Averaging</legend>
+                <p>지정한 범위와 간격으로 데이터를 평균내어 그래프를 그리고 텍스트로 저장합니다.</p>
+                <div class="crop-grid">
+                    <span>X:</span><input type="number" id="cropXFrom" placeholder="from">
+                    <span>→</span><input type="number" id="cropXTo" placeholder="to">
+                    <span>step:</span><input type="number" id="cropXStep" placeholder="step" value="1">
+                </div>
+                <div class="crop-grid">
+                    <span>Y:</span><input type="number" id="cropYFrom" placeholder="from">
+                    <span>→</span><input type="number" id="cropYTo" placeholder="to">
+                    <span>step:</span><input type="number" id="cropYStep" placeholder="step" value="1">
+                </div>
+                <button id="calculateAndPlotBtn">평균화</button>
+                <button id="saveAvgDataBtn" style="display: none;">결과 텍스트로 저장</button>
+            </fieldset>
+        </div>
+        <!-- 오른쪽 패널 -->
+        <div class="panel" id="right-panel">
+            <div id="canvas-container" style="position: relative;">
+                <canvas id="previewCanvas" width="800" height="600"></canvas>
+                <div id="pixel-info"></div>
+            </div>
+            <div id="profile-container">
+                 <canvas id="profileCanvas" width="800" height="200"></canvas>
+            </div>
+            <div id="analysis-tools">
+                <fieldset>
+                    <legend>Graph Analysis Tools</legend>
+                    <div class="tool-section">
+                        <strong>Peak Selection:</strong>
+                        <button id="setPeak1">파란선(1) 설정</button>
+                        <button id="setPeak2">주황선(2) 설정</button>
+                        <span>Δx: <b id="peakDelta">N/A</b></span>
+                        <span>center: <b id="peakCenter">N/A</b></span>
+                    </div>
+                    <!-- ▼▼▼ Background 섹션 추가 ▼▼▼ -->
+                    <div class="tool-section">
+                        <strong>Background:</strong>
+                        <button id="setBg1Btn">Set BG 1</button>
+                        <button id="setBg2Btn">Set BG 2</button>
+                    </div>
+                    <!-- ▲▲▲ Background 섹션 추가 ▲▲▲ -->
+                    <div class="tool-section">
+                        <strong>Integral Range:</strong>
+                        <button id="setIntegral1">노란선(1) 설정</button>
+                        <button id="setIntegral2">노란선(2) 설정</button>
+                        <span>Integral: <b id="integralValue">N/A</b></span>
+                    </div>
+                </fieldset>
+            </div>
+        </div>
+    </main>
+    <script src="script.js"></script>
+</body>
+</html>
