@@ -36,7 +36,7 @@ class AnalysisTest(unittest.TestCase):
         self.assertEqual(row['width'], 0)
         self.assertEqual(len(row['fit']), 1024)
         self.assertEqual(len(out['wavelengths']), 1024)
-        self.assertEqual(out['options']['model_oversample'],64)
+        self.assertEqual(out['options']['model_oversample'],16)
         self.assertTrue(np.all(np.isfinite(row['fit'])))
 
     def test_invalid_inputs_fail_before_fitting(self):
@@ -152,7 +152,7 @@ class AnalysisTest(unittest.TestCase):
             out=a.analyze([[100.]*1024],[[100.]*1024],dict(OPTIONS,model_oversample=factor))
             self.assertEqual(out['options']['model_oversample'],factor)
         a.configure(OPTIONS)
-        self.assertEqual(a.MODEL_OVERSAMPLE,64)
+        self.assertEqual(a.MODEL_OVERSAMPLE,16)
         for bad in [0,-1,1.5,float('nan'),float('inf')]:
             with self.assertRaisesRegex(ValueError,'oversampling'):
                 a.configure(dict(OPTIONS,model_oversample=bad))

@@ -59,6 +59,7 @@ sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
 
 # Resolve narrow intrinsic peaks before broadening; outputs stay on detector pixels.
 MODEL_OVERSAMPLE = 16
+DEFAULT_MODEL_OVERSAMPLE = MODEL_OVERSAMPLE
 
 # Rayleigh Signal calculation
 def calc_intensity_rayleigh(data):
@@ -216,7 +217,7 @@ def custom_thomson_model(wavelengths, ne, Te, Ti, center, width):
 def configure(options):
     global n1, n2, N1, N2, centerpixel, wavelengths, Mask, ELR, ELT, shot_R, shot_T, fwhm, sigma
     global MODEL_OVERSAMPLE
-    factor = float(options.get('model_oversample', 64))
+    factor = float(options.get('model_oversample', DEFAULT_MODEL_OVERSAMPLE))
     if not np.isfinite(factor) or factor < 1 or not factor.is_integer():
         raise ValueError('Model oversampling must be a positive integer (e.g. 16, 32 or 64).')
     MODEL_OVERSAMPLE = int(factor)
