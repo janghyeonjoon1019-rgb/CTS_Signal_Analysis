@@ -58,7 +58,7 @@ fwhm =8 # pixel, sqrt(4^2-(20/13)^2) 4.8 pixel 程度 20umの入口スリット�
 sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
 
 # Resolve narrow intrinsic peaks before broadening; outputs stay on detector pixels.
-MODEL_OVERSAMPLE = 64
+MODEL_OVERSAMPLE = 16
 
 # Rayleigh Signal calculation
 def calc_intensity_rayleigh(data):
