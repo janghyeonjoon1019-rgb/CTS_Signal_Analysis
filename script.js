@@ -106,17 +106,17 @@ $('cancel').addEventListener('click',()=>{state.worker?.terminate();state.worker
 // Scientific plots with explicit numerical axes; no external chart dependency.
 function chart(id, series, {xLabel='Y pixel',yLabel='',log=false,shade=null}={}){
   const canvas=$(id),ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
-  const l=78,r=36,t=22,b=48;ctx.clearRect(0,0,w,h);
+  const l=120,r=52,t=42,b=70;ctx.clearRect(0,0,w,h);
   const points=series.flatMap(s=>s.points).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])&&(!log||p[1]>0));if(!points.length)return;
   let xmin=Math.min(...points.map(p=>p[0])),xmax=Math.max(...points.map(p=>p[0]));
   let ymin=Math.min(...points.map(p=>log?Math.log10(p[1]):p[1])),ymax=Math.max(...points.map(p=>log?Math.log10(p[1]):p[1]));
   if(xmin===xmax){xmin-=.5;xmax+=.5;}if(ymin===ymax){ymin-=.5;ymax+=.5;}const pad=(ymax-ymin)*.08;ymin-=pad;ymax+=pad;
   const X=x=>l+(x-xmin)/(xmax-xmin)*(w-l-r),Y=y=>h-b-((log?Math.log10(y):y)-ymin)/(ymax-ymin)*(h-t-b);
-  ctx.font='12px monospace';
-  for(let i=0;i<=4;i++){const x=xmin+(xmax-xmin)*i/4,y=ymin+(ymax-ymin)*i/4,cy=h-b-(h-t-b)*i/4;ctx.strokeStyle='#e6ece7';ctx.beginPath();ctx.moveTo(l,cy);ctx.lineTo(w-r,cy);ctx.stroke();ctx.fillStyle='#728482';ctx.textAlign='right';ctx.fillText(log?(10**y).toExponential(1):Number(y.toPrecision(4)).toString(),l-10,cy+4);ctx.textAlign='center';ctx.fillText(Number(x.toFixed(3)).toString(),X(x),h-b+20);}
+  ctx.font='20px monospace';
+  for(let i=0;i<=4;i++){const x=xmin+(xmax-xmin)*i/4,y=ymin+(ymax-ymin)*i/4,cy=h-b-(h-t-b)*i/4;ctx.strokeStyle='#e6ece7';ctx.beginPath();ctx.moveTo(l,cy);ctx.lineTo(w-r,cy);ctx.stroke();ctx.fillStyle='#728482';ctx.textAlign='right';ctx.fillText(log?(10**y).toExponential(1):Number(y.toPrecision(4)).toString(),l-10,cy+7);ctx.textAlign='center';ctx.fillText(Number(x.toFixed(3)).toString(),X(x),h-b+20);}
   if(shade){ctx.fillStyle='#dae2de88';ctx.fillRect(X(shade[0]),t,X(shade[1])-X(shade[0]),h-t-b);}
   for(const s of series){ctx.strokeStyle=s.color;ctx.fillStyle=s.color;ctx.lineWidth=2;ctx.beginPath();let first=true;for(const [x,y] of s.points){if(!Number.isFinite(y)||(log&&y<=0)){first=true;continue;}if(first){ctx.moveTo(X(x),Y(y));first=false;}else ctx.lineTo(X(x),Y(y));}ctx.stroke();if(s.points.length===1){ctx.beginPath();ctx.arc(X(s.points[0][0]),Y(s.points[0][1]),4,0,Math.PI*2);ctx.fill();}}
-  ctx.fillStyle='#728482';ctx.textAlign='center';ctx.fillText(xLabel,(w+l-r)/2,h-8);ctx.textAlign='left';ctx.fillText(yLabel,8,12);
+  ctx.fillStyle='#728482';ctx.textAlign='center';ctx.fillText(xLabel,(w+l-r)/2,h-8);ctx.textAlign='left';ctx.fillText(yLabel,8,22);
 }
 function showResults(){
   const {rows,metadata:m}=state.result;$('results').hidden=false;$('result-body').replaceChildren();$('spectra-list').replaceChildren();

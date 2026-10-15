@@ -75,3 +75,18 @@ MPLCONFIGDIR=/tmp/cts-mpl .venv/bin/python -m unittest discover -s tests -p 'tes
 For the browser integration test, install Playwright in the scientific Python environment, provide Chromium at `/usr/bin/chromium`, start the static server, and run `python tests/browser_smoke.py`. The test checks zero defaults, English UI/errors, per-file/global frame selection, colored overlays, zoom/pan/reset and coordinate mapping, four-file exports, cancellation, **actual Python fitting of two Y bins**, display of both spectra, invalidation and mobile layout.
 
 `CTS_TEST_URL` overrides the server URL. In cloud runners where Chromium does not inherit the system HTTPS proxy/trust setup, set `CTS_BROWSER_SYSTEM_PROXY=1` to use a test-only urllib network bridge with system TLS verification. The application itself does not use this bridge. Screenshots are written to ignored `test-results/`.
+
+## Editing the Python model
+
+Change **`analysis.py`** to modify the physical model or numerical fitting. `worker.js` downloads and executes this Python source using Pyodide; it does not translate the formulas into JavaScript. After updating and deploying it, reload the page to create a new worker; use a hard refresh if an old cached version persists.
+
+Preserve the browser interface when changing the implementation:
+
+- Entry point: `analyze(rayleigh, thomson_data, options, progress=None)`. R/T are matching lists of Y bins, each with 1024 X values. The optional progress callback receives `(bin_index, bin_count)`.
+- Input option names: `n1`, `n2`, `ELR`, `ELT`, `shot_R`, `shot_T`. `configure(options)` applies the UI values each run, overriding the initial globals near the top of the file. Changing those globals alone does not change the web input defaults; those live in `index.html`.
+- Return a JSON-serializable dictionary with `rows`, `wavelengths` and `options`. Each row currently provides `index`, `ne`, `Te`, `Ti`, `Z`, `velocity`, `center`, `fitted_center`, `width`, `rayleigh_integral`, `thomson_integral`, `converged`, `iterations`, `redchi`, `signal`, `fit`, `rayleigh`, and `rayleigh_background`. Spectral arrays and the wavelength axis have 1024 entries. Return Python numbers/lists rather than NumPy objects; JSON must contain no NaN/infinity. Units: ne in m^-3, temperatures in eV, wavelengths in nm, velocity in m/s.
+- Instrument constants are also mirrored in the header/footer (`index.html`) and export metadata (`script.js`). If you change wavelength, pixel calibration, scattering angle or FWHM in Python, update those labels/metadata too; otherwise exports could describe the old calibration.
+- Keep the existing schema to change formulas only in Python. Adding inputs or changing result fields also requires updating `script.js` and usually `index.html`. If a new dependency is required, update the loading/install steps in `worker.js` and verify Pyodide support. SPE parsing, frame averaging, four-file Rayleigh averaging and Y binning are implemented in `spe.js`, before Python is called.
+- The untouched standalone original is `reference/ThomsonFittingSn-kai-kai.py`. The scientific differences are listed above: in particular, detector-aligned notch masking and convolution on the full grid can change fitted values relative to the original. Differential evolution also uses a fixed seed (42) and a finite evaluation limit, unlike the unseeded original. Synthetic validation is not an original-versus-integrated numerical equivalence test.
+
+The layout stacks Rayleigh above Thomson at all viewport sizes. UI and canvas-chart type is approximately 1.7 times the earlier size, with narrower screens allowed to wrap controls for readability.
