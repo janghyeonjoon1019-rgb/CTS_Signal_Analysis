@@ -7,7 +7,7 @@ async function initialize() {
   await py.loadPackage(['numpy', 'scipy', 'astropy', 'matplotlib', 'pandas', 'h5py', 'wrapt', 'micropip']);
   await py.runPythonAsync(`import micropip
 await micropip.install(['xarray==2025.1.2', 'plasmapy==2025.8.0', 'lmfit==1.3.4'])`);
-  const response = await fetch('analysis.py');
+  const response = await fetch('analysis.py?v=__CTS_BUILD__');
   if (!response.ok) throw new Error(`analysis.py: HTTP ${response.status}`);
   py.FS.writeFile('analysis.py', await response.text());
   await py.runPythonAsync("exec(compile(open('analysis.py').read(), 'analysis.py', 'exec'), globals())");

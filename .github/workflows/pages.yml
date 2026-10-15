@@ -27,6 +27,13 @@ jobs:
         run: |
           mkdir _site
           cp index.html style.css script.js spe.js preview.js worker.js analysis.py _site/
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          for name in ('index.html', 'script.js', 'worker.js'):
+              path = Path('_site') / name
+              path.write_text(path.read_text().replace('__CTS_BUILD__', os.environ['GITHUB_SHA']))
+          PY
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

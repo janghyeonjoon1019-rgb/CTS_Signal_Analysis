@@ -1,5 +1,5 @@
-import {parseSpe, averageFrames, averageRayleigh, rayleighPairComparison, binRows} from './spe.js';
-import {SignalPreview} from './preview.js';
+import {parseSpe, averageFrames, averageRayleigh, rayleighPairComparison, binRows} from './spe.js?v=__CTS_BUILD__';
+import {SignalPreview} from './preview.js?v=__CTS_BUILD__';
 const $ = id => document.getElementById(id);
 const state = {r:null, b:null, r2:null, b2:null, t:null, reference:null, thomson:null, result:null, worker:null, busy:false};
 const fileKeys = ['r','b','r2','b2','t'];
@@ -119,7 +119,7 @@ function busy(value){state.busy=value;for(const input of document.querySelectorA
 $('run').addEventListener('click',()=>{
   try{
     const payload=prepare();invalidate();busy(true);message('Preparing the fitting engine…');
-    state.worker ||= new Worker(new URL('./worker.js',import.meta.url));
+    state.worker ||= new Worker(new URL('./worker.js?v=__CTS_BUILD__',import.meta.url));
     state.worker.onmessage=({data})=>{
       if(data.type==='status')message(data.message);
       if(data.type==='progress'){const [from,to]=binRange(data.index,payload.metadata);message(`Fitting bin ${data.index+1} / ${data.total} · Y [${from}, ${to})…`);}
