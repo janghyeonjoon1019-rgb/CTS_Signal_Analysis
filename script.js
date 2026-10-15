@@ -10,7 +10,7 @@ const previews = Object.fromEntries(['r','t'].map(key => [key, new SignalPreview
 )]));
 const message = (text, error=false) => { $('status').textContent=text; $('status').classList.toggle('error',error); };
 function invalidate(){ state.result=null; $('results').hidden=true; $('run-errors').replaceChildren(); $('run-errors').hidden=true; }
-function clearImage(key){if(key==='r')$('rayleigh-comparison').hidden=true;previews[key].setImage(null);$(key+'-empty').hidden=false;$(key+'-dim').textContent='1024 × Y';}
+function clearImage(key){if(key==='r'){$('rayleigh-comparison').hidden=true;$('rayleigh-range-comparison').hidden=true;}previews[key].setImage(null);$(key+'-empty').hidden=false;$(key+'-dim').textContent='1024 × Y';}
 function selected(key){return [...$(key+'-frames').querySelectorAll('input:checked')].map(el=>Number(el.value));}
 function averaged(key){const s=state[key];if(!s)throw new Error(`${key.toUpperCase()} SPE file is required.`);return {...s,data:averageFrames(s,selected(key))};}
 function syncSelectAll() {
@@ -56,17 +56,33 @@ function framesChanged(key){
   }else{state.reference=null;clearImage('r');message('Rayleigh files/frames changed. Reapply four-file subtraction & averaging.');}
 }
 for(const key of ['r','b','r2','b2','t'])$(key+'-file').addEventListener('change',e=>{if(e.target.files[0])loadFile(key,e.target.files[0]);});
+function showRayleighComparison(comparison, prefix='rayleigh', scope='') {
+  const format=value=>value.toLocaleString('en-US',{maximumSignificantDigits:8});
+  const difference=comparison.differencePercent===null
+    ? 'Total-intensity difference: N/A (both totals are zero)'
+    : `Total-intensity difference: ${comparison.differencePercent.toFixed(2)}%`;
+  $(prefix+'-difference').textContent=difference+(scope?` · ${scope}`:'');
+  $(prefix+'-totals').textContent=`Pair 1 total (ΣA): ${format(comparison.firstTotal)} · Pair 2 total (ΣB): ${format(comparison.secondTotal)}`;
+  $(prefix+'-comparison').hidden=false;
+}
+$('compare-rayleigh-range').addEventListener('click',()=>{
+  $('rayleigh-range-comparison').hidden=true;
+  try {
+    const r=averaged('r'), b=averaged('b'), r2=averaged('r2'), b2=averaged('b2');
+    if(['y-from','y-to'].some(id=>$(id).value.trim()===''))throw new Error('Enter both comparison Y bounds.');
+    const from=Number($('y-from').value), to=Number($('y-to').value);
+    const comparison=rayleighPairComparison(r,b,r2,b2,{from,to});
+    showRayleighComparison(comparison,'rayleigh-range',`Y [${from}, ${to}) · X [0, 1024)`);
+    message(`Compared Rayleigh pairs over Y [${from}, ${to}) and X [0, 1024).`);
+  } catch(e) { message(e.message,true); }
+});
+for(const id of ['y-from','y-to'])$(id).addEventListener('input',()=>{$('rayleigh-range-comparison').hidden=true;});
 $('subtract').addEventListener('click',()=>{
   try {
     const r=averaged('r'), b=averaged('b'), r2=averaged('r2'), b2=averaged('b2');
     state.reference={...r,data:averageRayleigh(r,b,r2,b2)};
     const comparison=rayleighPairComparison(r,b,r2,b2);
-    const format=value=>value.toLocaleString('en-US',{maximumSignificantDigits:8});
-    $('rayleigh-difference').textContent=comparison.differencePercent===null
-      ? 'Total-intensity difference: N/A (both totals are zero)'
-      : `Total-intensity difference: ${comparison.differencePercent.toFixed(2)}%`;
-    $('rayleigh-totals').textContent=`Pair 1 total (ΣA): ${format(comparison.firstTotal)} · Pair 2 total (ΣB): ${format(comparison.secondTotal)}`;
-    $('rayleigh-comparison').hidden=false;
+    showRayleighComparison(comparison);
     invalidate();renderImage('r',state.reference);
     message('Applied R = (max(1 − 2, 0) + max(3 − 4, 0)) / 2 for preview, text export and fitting.');
   } catch(e) { message(e.message,true); }
@@ -115,7 +131,7 @@ function download(name,text,type='text/plain'){
   const url=URL.createObjectURL(new Blob([text],{type})),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 $('export-signals').addEventListener('click',()=>{try{const p=prepare();for(const key of ['R','T'])download(key+'.txt',p[key].flat().join('\n')+'\n');message('R/T exported: 1024 values per Y bin.');}catch(e){message(e.message,true);}});
-function busy(value){state.busy=value;for(const input of document.querySelectorAll('input, #subtract, #run, #export-signals'))input.disabled=value;$('cancel').hidden=!value;syncSelectAll();}
+function busy(value){state.busy=value;for(const input of document.querySelectorAll('input, #subtract, #compare-rayleigh-range, #run, #export-signals'))input.disabled=value;$('cancel').hidden=!value;syncSelectAll();}
 $('run').addEventListener('click',()=>{
   try{
     const payload=prepare();invalidate();busy(true);message('Preparing the fitting engine…');

@@ -57,3 +57,15 @@ test('Rayleigh pair comparison uses clipped totals and symmetric percentage', as
  assert.throws(()=>rayleighPairComparison(a,b,{...c,height:2},{...d,height:2}),/four/);
  assert.throws(()=>rayleighPairComparison(a,b,c,{...d,height:2}),/dimensions/);
 });
+
+test('Rayleigh range comparison uses every pixel within exclusive Y bounds', async()=>{
+ const {rayleighPairComparison}=await import('../spe.js');
+ const image=values=>({width:2,height:3,data:Float64Array.from(values)});
+ const a=image([10,-2,20,20,0,0]),b=image([0,0,0,0,0,0]),c=image([5,0,20,20,0,0]);
+ assert.equal(rayleighPairComparison(a,b,c,b,{from:0,to:1}).differencePercent,5/7.5*100);
+ assert.equal(rayleighPairComparison(a,b,c,b,{from:1,to:2}).differencePercent,0);
+ assert.equal(rayleighPairComparison(a,b,c,b,{from:2,to:3}).differencePercent,null);
+ const range=rayleighPairComparison(a,b,c,b,{from:1,to:3});assert.equal(range.firstTotal,40);
+ assert.deepEqual(rayleighPairComparison(a,b,c,b,{from:0,to:3}),rayleighPairComparison(a,b,c,b));
+ for(const [from,to] of [[-1,2],[0,4],[1,1],[2,1],[.5,2],[0,NaN]])assert.throws(()=>rayleighPairComparison(a,b,c,b,{from,to}),/Comparison Y range/);
+});
